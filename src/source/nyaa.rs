@@ -2,20 +2,25 @@ use std::io::BufReader;
 
 use chrono::{DateTime, FixedOffset};
 use rss::Channel;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use crate::{config::CONFIG, search::{SearchResult, Source}};
 use anyhow::Result;
 
+use super::{SearchResult, Source};
 
-#[derive(Deserialize)]
+fn default_url() -> String {
+    "https://nyaa.si/?page=rss&c=0_0&f=0&q=".to_string()
+}
+
+#[derive(Clone, Serialize, Deserialize)]
 pub struct NyaaConfig {
-    // https://nyaa.si/?page=rss&c=0_0&f=0&q=
+    #[serde(default = "default_url")]
     url: String,
 }
 
 pub struct NyaaClient {
     client: reqwest::Client,
+    config: NyaaConfig,
 }
 
 #[derive(Debug, Clone)]
@@ -67,14 +72,21 @@ fn size_parse(input: &str) -> Option<u64> {
 }
 
 impl NyaaClient {
-    pub fn new() -> Self {
+    pub fn new(config: NyaaConfig) -> Self {
         Self {
-            client: reqwest::ClientBuilder::default().build().expect("failed to make client"),
+            client: reqwest::ClientBuilder::default()
+                .build()
+                .expect("failed to make client"),
+            config,
         }
     }
 
     pub async fn query(&self, query: &str) -> Result<Vec<NyaaResult>> {
-        let response = self.client.get(format!("{}{}", CONFIG.nyaa.url, urlencoding::encode(query))).send().await?;
+        let response = self
+            .client
+            .get(format!("{}{}", self.config.url, urlencoding::encode(query)))
+            .send()
+            .await?;
         if !response.status().is_success() {
             bail!("bad http status code for nyaa: {}", response.status());
         }
@@ -82,38 +94,55 @@ impl NyaaClient {
         let rss = Channel::read_from(BufReader::new(body.as_bytes()))?;
         let mut out = vec![];
         for mut item in rss.into_items() {
-            let mut nyaa = item.extensions.remove("nyaa").ok_or_else(|| anyhow!("missing nyaa ext"))?;
+            let mut nyaa = item
+                .extensions
+                .remove("nyaa")
+                .ok_or_else(|| anyhow!("missing nyaa ext"))?;
             out.push(NyaaResult {
                 title: item.title.unwrap_or_default(),
                 torrent_link: item.link.unwrap_or_default(),
                 view_link: item.guid.map(|x| x.value).unwrap_or_default(),
-                date: item.pub_date.and_then(|x| DateTime::parse_from_str(&*x, "%a, %d %b %Y %H:%M:%S %z").ok()).ok_or_else(|| anyhow!("no date"))?,
-                seeders: nyaa.remove("seeders")
+                date: item
+                    .pub_date
+                    .and_then(|x| DateTime::parse_from_str(&*x, "%a, %d %b %Y %H:%M:%S %z").ok())
+                    .ok_or_else(|| anyhow!("no date"))?,
+                seeders: nyaa
+                    .remove("seeders")
                     .and_then(|x| x.into_iter().next())
                     .and_then(|x| x.value)
                     .and_then(|x| x.parse().ok())
                     .unwrap_or_default(),
-                leechers: nyaa.remove("leechers")
+                leechers: nyaa
+                    .remove("leechers")
                     .and_then(|x| x.into_iter().next())
                     .and_then(|x| x.value)
                     .and_then(|x| x.parse().ok())
                     .unwrap_or_default(),
-                downloads: nyaa.remove("downloads")
+                downloads: nyaa
+                    .remove("downloads")
                     .and_then(|x| x.into_iter().next())
                     .and_then(|x| x.value)
                     .and_then(|x| x.parse().ok())
                     .unwrap_or_default(),
-                category: nyaa.remove("category")
+                category: nyaa
+                    .remove("category")
                     .and_then(|x| x.into_iter().next())
                     .and_then(|x| x.value)
                     .unwrap_or_default(),
-                size: size_parse(&*nyaa.remove("size")
-                    .and_then(|x| x.into_iter().next())
-                    .and_then(|x| x.value).unwrap_or_default()).unwrap_or_default(),
-                trusted: nyaa.remove("category")
+                size: size_parse(
+                    &*nyaa
+                        .remove("size")
+                        .and_then(|x| x.into_iter().next())
+                        .and_then(|x| x.value)
+                        .unwrap_or_default(),
+                )
+                .unwrap_or_default(),
+                trusted: nyaa
+                    .remove("category")
                     .and_then(|x| x.into_iter().next())
                     .and_then(|x| x.value)
-                    .as_deref() == Some("Yes"),
+                    .as_deref()
+                    == Some("Yes"),
             })
         }
         Ok(out)
@@ -123,7 +152,9 @@ impl NyaaClient {
 #[async_trait::async_trait]
 impl Source for NyaaClient {
     async fn search(&self, query: &str) -> Result<Vec<SearchResult>> {
-        Ok(self.query(query).await?
+        Ok(self
+            .query(query)
+            .await?
             .into_iter()
             .map(Into::into)
             .collect())

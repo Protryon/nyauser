@@ -3,3 +3,4 @@
 /config.sh
 /config.yml
 /tail.sh
+/compose/data/*

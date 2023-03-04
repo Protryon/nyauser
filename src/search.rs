@@ -1,15 +1,26 @@
-use std::{time::Duration, path::{Path, PathBuf}};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use chrono::{DateTime, FixedOffset, Utc};
-use serde::{Deserialize, Serialize};
 use anyhow::Result;
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use sled::Db;
 use tokio::select;
 
-use crate::{config::CONFIG, profile::StandardEpisode};
+use crate::{
+    config::CONFIG,
+    profile::StandardEpisode,
+    sink::Sink,
+    source::{SearchResult, Source},
+};
 
+fn default_source_sink() -> String {
+    "default".to_string()
+}
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct SearchConfig {
     /// how many days old can a torrent be to be considered
     /// can be overridden in `SeriesConfig`
@@ -22,18 +33,12 @@ pub struct SearchConfig {
     /// how many minutes between scans of the sink (i.e. tranmsmission)
     /// for completed torrents.
     pub completion_check_minutes: u64,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SearchResult {
-    pub title: String,
-    pub torrent_link: String,
-    pub view_link: String,
-    pub date: DateTime<FixedOffset>,
-    pub seeders: u64,
-    pub leechers: u64,
-    pub downloads: u64,
-    pub size: u64,
+    /// name of source to search, defaulting to `default`
+    #[serde(default = "default_source_sink")]
+    pub source: String,
+    /// name of sink to fetch with, defaulting to `default`
+    #[serde(default = "default_source_sink")]
+    pub sink: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,7 +75,10 @@ struct ParsedSearchResult {
 
 impl ParsedSearchResult {
     fn id(&self) -> String {
-        format!("{}_S{:02}E{:02}", self.parsed.title, self.parsed.season, self.parsed.episode)
+        format!(
+            "{}_S{:02}E{:02}",
+            self.parsed.title, self.parsed.season, self.parsed.episode
+        )
     }
 
     pub fn relocate_dir(&self) -> Option<PathBuf> {
@@ -82,46 +90,12 @@ impl ParsedSearchResult {
     }
 }
 
-#[async_trait::async_trait]
-pub trait Source {
-    async fn search(&self, query: &str) -> Result<Vec<SearchResult>>;
-}
-
-#[derive(Debug)]
-pub struct FinishedTorrent {
-    pub id: i64,
-    pub download_dir: String,
-    pub files: Vec<String>,
-}
-
-pub enum TorrentStatus {
-    Finished,
-    InProgress,
-}
-
-pub struct TorrentInfo {
-    pub id: i64,
-    pub hash: String,
-    pub status: TorrentStatus,
-}
-
-#[async_trait::async_trait]
-pub trait Sink {
-    /// Ok(None) -> already present
-    async fn push(&self, torrent_url: &str) -> Result<Option<TorrentInfo>>;
-
-    async fn check(&self, id: i64) -> Result<Option<TorrentInfo>>;
-
-    async fn finished(&self) -> Result<Vec<FinishedTorrent>>;
-
-    async fn delete(&self, id: i64) -> Result<()>;
-}
-
 pub async fn wipe_nonexistant(db: &Db) {
     for (key, value) in db.scan_prefix("torrent-").map(|x| x.unwrap()) {
         let key = std::str::from_utf8(&key[..]).unwrap();
         let value = std::str::from_utf8(&value[..]).unwrap();
-        let pull_entry: PullEntry = serde_json::from_str(value).expect("failed to parse pull entry");
+        let pull_entry: PullEntry =
+            serde_json::from_str(value).expect("failed to parse pull entry");
         if !matches!(pull_entry.state, PullState::Finished) {
             continue;
         }
@@ -145,16 +119,15 @@ pub struct Searcher<I: Source, O: Sink> {
 
 impl<I: Source, O: Sink> Searcher<I, O> {
     pub fn new(db: Db, source: I, sink: O) -> Result<Self> {
-        Ok(Self {
-            source,
-            sink,
-            db,
-        })
+        Ok(Self { source, sink, db })
     }
 
     pub async fn run(mut self) {
-        let mut scan_interval = tokio::time::interval(Duration::from_secs(CONFIG.search.completion_check_minutes * 60));
-        let mut search_interval = tokio::time::interval(Duration::from_secs(CONFIG.search.search_minutes * 60));
+        let mut scan_interval = tokio::time::interval(Duration::from_secs(
+            CONFIG.search.completion_check_minutes * 60,
+        ));
+        let mut search_interval =
+            tokio::time::interval(Duration::from_secs(CONFIG.search.search_minutes * 60));
         loop {
             select! {
                 _ = scan_interval.tick() => {
@@ -174,7 +147,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
     async fn scan_completed(&mut self) -> Result<()> {
         debug!("scan starting");
         self.clean().await?;
-        
+
         let finished = self.sink.finished().await?;
         for torrent in finished {
             let downloading_id = format!("downloading-{}", torrent.id);
@@ -187,7 +160,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 None => {
                     error!("missing torrent for id {}", internal_id);
                     continue;
-                },
+                }
                 Some(x) => serde_json::from_str(&*String::from_utf8_lossy(&x[..]))?,
             };
             info!("torrent = {:?}, pe = {:?}", torrent, pull_entry);
@@ -198,12 +171,13 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                     let old_file = download_dir.join(&*file);
                     if old_file.exists() {
                         tokio::fs::create_dir_all(new_file.parent().unwrap()).await?;
-                        tokio::fs::rename(old_file, new_file).await?;    
+                        tokio::fs::rename(old_file, new_file).await?;
                     }
                 }
             }
             pull_entry.state = PullState::Finished;
-            self.db.insert(&dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;    
+            self.db
+                .insert(&dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;
             self.db.remove(&downloading_id)?;
             self.sink.delete(torrent.id).await?;
         }
@@ -211,7 +185,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
     }
 
     pub async fn clean(&mut self) -> Result<()> {
-        for torrent  in self.db.scan_prefix("downloading-") {
+        for torrent in self.db.scan_prefix("downloading-") {
             let (key, value) = torrent?;
             let key = std::str::from_utf8(&key[..])?;
             let internal_id = std::str::from_utf8(&value[..])?;
@@ -222,12 +196,15 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                     error!("missing torrent for id {}", internal_id);
                     self.db.remove(key)?;
                     continue;
-                },
+                }
                 Some(x) => serde_json::from_str(&*String::from_utf8_lossy(&x[..]))?,
             };
 
             if matches!(pull_entry.state, PullState::Finished) {
-                info!("removing stale download tag for finished torrent: {}", internal_id);
+                info!(
+                    "removing stale download tag for finished torrent: {}",
+                    internal_id
+                );
                 // remove stale download key that we scanned
                 self.db.remove(key)?;
                 continue;
@@ -243,12 +220,12 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                         }
                     }
                     // otherwise inprogress or finished, and not `clean`s concern
-                },
+                }
                 None => {
                     info!("removing stale torrent: {}", internal_id);
                     self.db.remove(key)?;
                     self.db.remove(format!("torrent-{}", internal_id))?;
-                },
+                }
             }
         }
         Ok(())
@@ -257,7 +234,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
     async fn run_iter(&mut self) -> Result<()> {
         info!("round starting");
         self.clean().await?;
-        
+
         let mut candidates = vec![];
         for (series_name, series) in CONFIG.series.iter() {
             let profile = match CONFIG.profiles.get(&series.profile) {
@@ -267,17 +244,22 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                     continue;
                 }
             };
-            let days_old = series.max_days_old.map(|x| CONFIG.search.max_days_old.max(x)).unwrap_or(CONFIG.search.max_days_old);
+            let days_old = series
+                .max_days_old
+                .map(|x| CONFIG.search.max_days_old.max(x))
+                .unwrap_or(CONFIG.search.max_days_old);
 
             let search = match profile.search_prefix.as_ref() {
                 Some(prefix) => format!("{} {}", prefix, series_name),
-                None => series_name.to_string()
+                None => series_name.to_string(),
             };
             match self.source.search(&*search).await {
                 Ok(items) => {
                     for item in items {
                         let since = Utc::now().signed_duration_since(item.date);
-                        if since > chrono::Duration::days(days_old as i64) || item.seeders < CONFIG.search.min_seeders {
+                        if since > chrono::Duration::days(days_old as i64)
+                            || item.seeders < CONFIG.search.min_seeders
+                        {
                             continue;
                         }
                         let parsed = match profile.parse_name(&*item.title) {
@@ -292,12 +274,17 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                             parsed,
                             profile: series.profile.to_string(),
                             relocate: series.relocate.clone().or_else(|| {
-                                Some(Path::new(profile.relocate.as_ref()?).join(series_name).to_string_lossy().into_owned())
+                                Some(
+                                    Path::new(profile.relocate.as_ref()?)
+                                        .join(series_name)
+                                        .to_string_lossy()
+                                        .into_owned(),
+                                )
                             }),
                             relocate_season: series.relocate_season,
                         })
                     }
-                },
+                }
                 Err(e) => {
                     error!("failure to search '{}': {:?}", search, e);
                 }
@@ -305,25 +292,43 @@ impl<I: Source, O: Sink> Searcher<I, O> {
         }
 
         info!("found {} candidates", candidates.len());
-        debug!("{:<115} {:<5} {:<7} {:<7} {:<9} {:<9} {:<15}", "TITLE", "DATE", "SEEDERS", "LEECHERS", "DOWNLOADS", "SIZE (MB)", "VIEW");
+        debug!(
+            "{:<115} {:<5} {:<7} {:<7} {:<9} {:<9} {:<15}",
+            "TITLE", "DATE", "SEEDERS", "LEECHERS", "DOWNLOADS", "SIZE (MB)", "VIEW"
+        );
         for candidate in candidates {
             let id = candidate.id();
-            debug!("{:<115} {:<5} {:>7} {:>7} {:>9} {: >9.02} {:<15}", candidate.result.title, candidate.result.date.format("%Y-%m-%d %H:%M:%S"), candidate.result.seeders, candidate.result.leechers, candidate.result.downloads, (candidate.result.size as f64) / 1024.0 / 1024.0, candidate.result.view_link);
+            debug!(
+                "{:<115} {:<5} {:>7} {:>7} {:>9} {: >9.02} {:<15}",
+                candidate.result.title,
+                candidate.result.date.format("%Y-%m-%d %H:%M:%S"),
+                candidate.result.seeders,
+                candidate.result.leechers,
+                candidate.result.downloads,
+                (candidate.result.size as f64) / 1024.0 / 1024.0,
+                candidate.result.view_link
+            );
             let dbid = format!("torrent-{}", id);
             if self.db.contains_key(&dbid)? {
                 continue;
             }
             // TODO: legacy (remove)
-            if self.db.contains_key(&format!("torrent-{}_{}", candidate.profile, id))? {
+            if self
+                .db
+                .contains_key(&format!("torrent-{}_{}", candidate.profile, id))?
+            {
                 continue;
             }
-            info!("starting download for '{}' from {} ({})", id, candidate.result.view_link, candidate.result.date);
+            info!(
+                "starting download for '{}' from {} ({})",
+                id, candidate.result.view_link, candidate.result.date
+            );
 
             let torrent_info = match self.sink.push(&*candidate.result.torrent_link).await {
                 Err(e) => {
                     error!("failed to push torrent '{}': {:?}", id, e);
                     continue;
-                },
+                }
                 Ok(Some(out)) => out,
                 Ok(None) => {
                     warn!("torrent already present: {}", id);
@@ -336,8 +341,10 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 torrent_hash: Some(torrent_info.hash),
                 state: PullState::Downloading,
             };
-            self.db.insert(dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;
-            self.db.insert(format!("downloading-{}", torrent_info.id), id.as_bytes())?;
+            self.db
+                .insert(dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;
+            self.db
+                .insert(format!("downloading-{}", torrent_info.id), id.as_bytes())?;
             self.db.flush_async().await?;
         }
         Ok(())

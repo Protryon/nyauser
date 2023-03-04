@@ -1,6 +1,5 @@
 use serde::Deserialize;
 
-
 fn serde_true() -> bool {
     true
 }
@@ -14,6 +13,6 @@ pub struct SeriesConfig {
     /// if set, overrides `ProfileConfig::relocate`/<series-name> default path
     pub relocate: Option<String>,
     /// if true, `Season X` is appended to the relocate path
-    #[serde(default="serde_true")]
+    #[serde(default = "serde_true")]
     pub relocate_season: bool,
 }

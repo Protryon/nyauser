@@ -1,0 +1,69 @@
+---
+nyaa: 
+  url: https://nyaa.si/?page=rss&c=0_0&f=0&q=
+transmission:
+  url: http://192.168.2.1:9091/transmission/rpc
+  username: transmission
+  password: transmission
+  path_patch:
+    "/pool1/dl/transmission/done": "/runtime/downloads"
+profiles:
+  subsplease:
+    search_prefix: "subsplease 1080p"
+    parse_regex: '\[SubsPlease\] (?P<title>.*?) (?:S(?P<season>[0-9]{1,2}) )?- (?P<episode>[0-9]{1,3})(?:v[0-9])? \(1080p\) \[(?P<checksum>[0-9a-zA-Z]{8})\]\.mkv'
+    relocate: /runtime/media/anime/
+  ember:
+    search_prefix: "ember 1080p"
+    parse_regex: '\[EMBER\] (?P<title>.*?) S(?P<season>[0-9]{1,2})E(?P<episode>[0-9]{1,4})(?:v[0-9])? \[1080p\].*'
+    relocate: /runtime/media/anime/
+  erai_raws:
+    search_prefix: "Erai-raws 1080p"
+    parse_regex: '\[Erai-raws\] (?P<title>.*?) - (?P<episode>[0-9]{1,4}) \[1080p\]\[Multiple Subtitle\]\[(?P<checksum>[0-9a-zA-Z]{8})\]\.mkv'
+    relocate: /runtime/media/anime/
+series:
+  "Shingeki no Kyojin":
+    profile: subsplease
+    relocate: /runtime/media/anime/Attack on Titan/Season 4/
+    relocate_season: false
+  "Ousama Ranking":
+    profile: subsplease
+  "Arifureta Shokugyou de Sekai Saikyou":
+    profile: subsplease
+  "Sono Bisque Doll wa Koi wo Suru":
+    profile: subsplease
+  "Komi-san wa, Comyushou desu.":
+    profile: subsplease
+  "Tensai Ouji no Akaji Kokka Saisei Jutsu":
+    profile: subsplease
+  "Tate no Yuusha no Nariagari":
+    profile: subsplease
+  "Kaguya-sama wa Kokurasetai":
+    profile: subsplease
+  "Spy x Family":
+    profile: subsplease
+  "Gaikotsu Kishi-sama, Tadaima Isekai e Odekakechuu":
+    profile: subsplease
+  "Summer Time Render":
+    profile: ember
+  "Youkoso Jitsuryoku Shijou Shugi no Kyoushitsu e":
+    profile: subsplease
+  "Overlord IV":
+    profile: subsplease
+  "Made in Abyss - Retsujitsu no Ougonkyou":
+    profile: subsplease
+  "Shadows House":
+    profile: subsplease
+  "Yofukashi no Uta":
+    profile: subsplease
+  "Isekai Ojisan":
+    profile: erai_raws
+  "Hataraku Maou-sama":
+    profile: subsplease
+  "Fumetsu no Anata e":
+    profile: subsplease
+search:
+  max_days_old: 7
+  min_seeders: 1
+  search_minutes: 15
+  completion_check_minutes: 1
+db_file: /runtime/data/nyauser.db

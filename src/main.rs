@@ -1,17 +1,18 @@
+use clap::Parser;
 use config::CONFIG;
 use log::LevelFilter;
-use nyaa::NyaaClient;
 use search::Searcher;
-use transmission::TransmissionClient;
-use clap::Parser;
+use sink::{Sink, TransmissionClient};
+use source::{NyaaClient, Source};
+
+use crate::{sink::SinkConfig, source::SourceConfig};
 
 mod config;
-mod transmission;
-mod nyaa;
-mod search;
 mod profile;
+mod search;
 mod series;
-
+mod sink;
+mod source;
 
 /// Simplified torrent puller
 #[derive(Parser, Debug)]
@@ -46,7 +47,13 @@ async fn main() {
 
     env_logger::Builder::new()
         .filter_module("transmission_rpc", LevelFilter::Warn)
-        .parse_env(env_logger::Env::default().default_filter_or(if args.verbose { "debug" } else { "info" }))
+        .parse_env(
+            env_logger::Env::default().default_filter_or(if args.verbose {
+                "debug"
+            } else {
+                "info"
+            }),
+        )
         .init();
 
     let db = sled::open(&*CONFIG.db_file).expect("sled failed to init db");
@@ -64,8 +71,21 @@ async fn main() {
         return;
     }
 
-    let sink = TransmissionClient::new();
-    let source = NyaaClient::new();
+    let Some(source_config) = CONFIG.sources.get(&CONFIG.search.source) else {
+        error!("invalid source {}, not found", CONFIG.search.source);
+        std::process::exit(1);
+    };
+    let Some(sink_config) = CONFIG.sinks.get(&CONFIG.search.sink) else {
+        error!("invalid sink {}, not found", CONFIG.search.sink);
+        std::process::exit(1);
+    };
+
+    let sink: Box<dyn Sink + Send + Sync> = match sink_config {
+        SinkConfig::Transmission(config) => Box::new(TransmissionClient::new(config.clone())),
+    };
+    let source: Box<dyn Source + Send + Sync> = match source_config {
+        SourceConfig::Nyaa(config) => Box::new(NyaaClient::new(config.clone())),
+    };
     let mut searcher = Searcher::new(db, source, sink).expect("failed to init searcher");
     if args.clean {
         searcher.clean().await.expect("clean failed");

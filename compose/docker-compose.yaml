@@ -1,0 +1,11 @@
+version: '3.7'
+services:
+  nyauser:
+    build: .
+    # ports:
+    #   - 16379:6379
+    volumes:
+    - ./config:/runtime/config
+    - ./data:/runtime/data
+    - ./downloads:/runtime/downloads
+    - ./media:/runtime/media

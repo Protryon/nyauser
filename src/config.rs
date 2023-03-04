@@ -1,14 +1,17 @@
 use std::collections::HashMap;
 
+use indexmap::IndexMap;
 use serde::Deserialize;
 
-use crate::{transmission::TransmissionConfig, nyaa::NyaaConfig, search::SearchConfig, profile::ProfileConfig, series::SeriesConfig};
-
+use crate::{
+    profile::ProfileConfig, search::SearchConfig, series::SeriesConfig, sink::SinkConfig,
+    source::SourceConfig,
+};
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub transmission: TransmissionConfig,
-    pub nyaa: NyaaConfig,
+    pub sinks: IndexMap<String, SinkConfig>,
+    pub sources: IndexMap<String, SourceConfig>,
     pub search: SearchConfig,
     pub profiles: HashMap<String, ProfileConfig>,
     pub series: HashMap<String, SeriesConfig>,

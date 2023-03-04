@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 
-use regex::{Regex, Match};
+use regex::{Match, Regex};
 use serde::{Deserialize, Deserializer, Serialize};
 
 fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex, D::Error> {
     let string = String::deserialize(deserializer)?;
-    Regex::new(&*string).map_err(|e| serde::de::Error::invalid_value(serde::de::Unexpected::Str(&*string), &&*format!("invalid regex: {:?}", e)))
+    Regex::new(&*string).map_err(|e| {
+        serde::de::Error::invalid_value(
+            serde::de::Unexpected::Str(&*string),
+            &&*format!("invalid regex: {:?}", e),
+        )
+    })
 }
 
 #[derive(Deserialize)]
@@ -13,7 +18,7 @@ pub struct ProfileConfig {
     /// initial parts of search phrase, of which is followed by space and series name
     pub search_prefix: Option<String>,
     /// torrent name parsing regex
-    #[serde(deserialize_with="deserialize_regex")]
+    #[serde(deserialize_with = "deserialize_regex")]
     pub parse_regex: Regex,
     /// if set, is a default path for series relocation. I.e. `relocate`/<series-name>/Season X/episode1.mp4
     pub relocate: Option<String>,
@@ -42,10 +47,12 @@ impl ProfileConfig {
                 "title" => out.title = value.to_string(),
                 "season" => out.season = value.parse().ok()?,
                 "episode" => out.episode = value.parse().ok()?,
-                "checksum" => out.checksum = u32::from_le_bytes(hex::decode(value).ok()?.try_into().ok()?),
+                "checksum" => {
+                    out.checksum = u32::from_le_bytes(hex::decode(value).ok()?.try_into().ok()?)
+                }
                 name => {
                     out.ext.insert(name.to_string(), value.to_string());
-                },
+                }
             }
         }
         Some(out)
