@@ -4,7 +4,7 @@ fn serde_true() -> bool {
     true
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct SeriesConfig {
     /// profile name to search for this series
     pub profile: String,

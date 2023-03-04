@@ -86,7 +86,8 @@ async fn main() {
     let source: Box<dyn Source + Send + Sync> = match source_config {
         SourceConfig::Nyaa(config) => Box::new(NyaaClient::new(config.clone())),
     };
-    let mut searcher = Searcher::new(db, source, sink).expect("failed to init searcher");
+    let mut searcher =
+        Searcher::new(db, source, sink, CONFIG.search.clone()).expect("failed to init searcher");
     if args.clean {
         searcher.clean().await.expect("clean failed");
         return;

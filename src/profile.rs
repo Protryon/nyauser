@@ -13,7 +13,7 @@ fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct ProfileConfig {
     /// initial parts of search phrase, of which is followed by space and series name
     pub search_prefix: Option<String>,

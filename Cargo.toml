@@ -2,11 +2,17 @@
 name = "nyauser"
 version = "0.1.0"
 edition = "2021"
+authors = ["Protryon <max.bruce12@gmail.com>"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Protryon/nyauser"
+description = "Torrent and media management daemon"
+keywords = [ "torrent", "nyaa", "management" ]
 
 [dependencies]
 transmission-rpc = "0.3"
 tokio = { version = "1", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
+# don't update this to 0.9, it breaks everything
 serde_yaml = "0.8"
 lazy_static = "1.4"
 rss = "2.0"
@@ -19,7 +25,7 @@ sled = "0.34"
 log = "0.4"
 env_logger = "0.9"
 serde_json = "1.0"
-regex = "1.5"
+regex = "1.7"
 hex = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 indexmap = { version = "1.9", features = ["serde"] }

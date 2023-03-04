@@ -5,13 +5,14 @@ use std::{
 
 use anyhow::Result;
 use chrono::Utc;
+use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 use sled::Db;
 use tokio::select;
 
 use crate::{
-    config::CONFIG,
-    profile::StandardEpisode,
+    profile::{ProfileConfig, StandardEpisode},
+    series::SeriesConfig,
     sink::Sink,
     source::{SearchResult, Source},
 };
@@ -20,7 +21,7 @@ fn default_source_sink() -> String {
     "default".to_string()
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Clone)]
 pub struct SearchConfig {
     /// how many days old can a torrent be to be considered
     /// can be overridden in `SeriesConfig`
@@ -30,7 +31,7 @@ pub struct SearchConfig {
     pub min_seeders: u64,
     /// how many minutes between search scans
     pub search_minutes: u64,
-    /// how many minutes between scans of the sink (i.e. tranmsmission)
+    /// how many minutes between scans of the sink (i.e. transmission)
     /// for completed torrents.
     pub completion_check_minutes: u64,
     /// name of source to search, defaulting to `default`
@@ -39,6 +40,13 @@ pub struct SearchConfig {
     /// name of sink to fetch with, defaulting to `default`
     #[serde(default = "default_source_sink")]
     pub sink: String,
+    #[serde(default)]
+    pub profiles: IndexMap<String, ProfileConfig>,
+    #[serde(default)]
+    pub series: IndexMap<String, SeriesConfig>,
+    // path prefix patches
+    #[serde(default)]
+    pub path_patch: IndexMap<String, String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -115,19 +123,25 @@ pub struct Searcher<I: Source, O: Sink> {
     source: I,
     sink: O,
     db: Db,
+    config: SearchConfig,
 }
 
 impl<I: Source, O: Sink> Searcher<I, O> {
-    pub fn new(db: Db, source: I, sink: O) -> Result<Self> {
-        Ok(Self { source, sink, db })
+    pub fn new(db: Db, source: I, sink: O, config: SearchConfig) -> Result<Self> {
+        Ok(Self {
+            source,
+            sink,
+            db,
+            config,
+        })
     }
 
     pub async fn run(mut self) {
         let mut scan_interval = tokio::time::interval(Duration::from_secs(
-            CONFIG.search.completion_check_minutes * 60,
+            self.config.completion_check_minutes * 60,
         ));
         let mut search_interval =
-            tokio::time::interval(Duration::from_secs(CONFIG.search.search_minutes * 60));
+            tokio::time::interval(Duration::from_secs(self.config.search_minutes * 60));
         loop {
             select! {
                 _ = scan_interval.tick() => {
@@ -165,7 +179,14 @@ impl<I: Source, O: Sink> Searcher<I, O> {
             };
             info!("torrent = {:?}, pe = {:?}", torrent, pull_entry);
             if let Some(relocate) = pull_entry.result.relocate_dir() {
-                let download_dir = Path::new(&*torrent.download_dir);
+                let mut download_dir = torrent.download_dir.clone();
+                for (patch, to) in &self.config.path_patch {
+                    if let Some(suffix) = download_dir.strip_prefix(patch) {
+                        download_dir = format!("{to}{suffix}");
+                        break;
+                    }
+                }
+                let download_dir = Path::new(&*download_dir);
                 for file in torrent.files {
                     let new_file = relocate.join(&*file);
                     let old_file = download_dir.join(&*file);
@@ -236,8 +257,8 @@ impl<I: Source, O: Sink> Searcher<I, O> {
         self.clean().await?;
 
         let mut candidates = vec![];
-        for (series_name, series) in CONFIG.series.iter() {
-            let profile = match CONFIG.profiles.get(&series.profile) {
+        for (series_name, series) in self.config.series.iter() {
+            let profile = match self.config.profiles.get(&series.profile) {
                 Some(x) => x,
                 None => {
                     error!("missing/invalid profile for '{}'", series_name);
@@ -246,8 +267,8 @@ impl<I: Source, O: Sink> Searcher<I, O> {
             };
             let days_old = series
                 .max_days_old
-                .map(|x| CONFIG.search.max_days_old.max(x))
-                .unwrap_or(CONFIG.search.max_days_old);
+                .map(|x| self.config.max_days_old.max(x))
+                .unwrap_or(self.config.max_days_old);
 
             let search = match profile.search_prefix.as_ref() {
                 Some(prefix) => format!("{} {}", prefix, series_name),
@@ -258,7 +279,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                     for item in items {
                         let since = Utc::now().signed_duration_since(item.date);
                         if since > chrono::Duration::days(days_old as i64)
-                            || item.seeders < CONFIG.search.min_seeders
+                            || item.seeders < self.config.min_seeders
                         {
                             continue;
                         }
