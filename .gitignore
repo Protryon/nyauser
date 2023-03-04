@@ -1,0 +1,5 @@
+/target
+/deploy.sh
+/config.sh
+/config.yml
+/tail.sh

@@ -1,0 +1,11 @@
+[Unit]
+Description=Nyauser
+Requires=network.target
+After=network.target
+
+[Service]
+Environment="NYAUSER_CONFIG=/etc/nyauser.yml"
+ExecStart=/usr/local/bin/nyauser
+
+[Install]
+WantedBy=multi-user.target
