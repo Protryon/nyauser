@@ -1,25 +1,17 @@
 use std::collections::HashMap;
 
-use regex::{Match, Regex};
-use serde::{Deserialize, Deserializer, Serialize};
+use regex::Match;
+use serde::{Deserialize, Serialize};
 
-fn deserialize_regex<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Regex, D::Error> {
-    let string = String::deserialize(deserializer)?;
-    Regex::new(&*string).map_err(|e| {
-        serde::de::Error::invalid_value(
-            serde::de::Unexpected::Str(&*string),
-            &&*format!("invalid regex: {:?}", e),
-        )
-    })
-}
+use crate::regex_wrapper::RegexWrapper;
 
-#[derive(Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct ProfileConfig {
+    pub source: String,
     /// initial parts of search phrase, of which is followed by space and series name
     pub search_prefix: Option<String>,
     /// torrent name parsing regex
-    #[serde(deserialize_with = "deserialize_regex")]
-    pub parse_regex: Regex,
+    pub parse_regex: RegexWrapper,
     /// if set, is a default path for series relocation. I.e. `relocate`/<series-name>/Season X/episode1.mp4
     pub relocate: Option<String>,
 }

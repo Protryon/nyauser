@@ -1,20 +1,17 @@
-use std::{
-    path::{Path, PathBuf},
-    time::Duration,
-};
+use std::{path::Path, time::Duration};
 
 use anyhow::Result;
 use chrono::Utc;
 use indexmap::IndexMap;
-use serde::{Deserialize, Serialize};
-use sled::Db;
+use serde::Deserialize;
 use tokio::select;
 
 use crate::{
-    profile::{ProfileConfig, StandardEpisode},
+    db::{Database, ParsedSearchResult, PullEntry, PullState},
+    profile::ProfileConfig,
     series::SeriesConfig,
     sink::Sink,
-    source::{SearchResult, Source},
+    source::Source,
 };
 
 fn default_source_sink() -> String {
@@ -49,61 +46,8 @@ pub struct SearchConfig {
     pub path_patch: IndexMap<String, String>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-pub enum PullState {
-    Downloading,
-    Finished,
-}
-
-impl Default for PullState {
-    fn default() -> Self {
-        PullState::Finished
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PullEntry {
-    result: ParsedSearchResult,
-    torrent_id: Option<i64>,
-    // only None in legacy
-    torrent_hash: Option<String>,
-    // default for legacy
-    #[serde(default)]
-    state: PullState,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ParsedSearchResult {
-    result: SearchResult,
-    parsed: StandardEpisode,
-    profile: String,
-    relocate: Option<String>,
-    relocate_season: bool,
-}
-
-impl ParsedSearchResult {
-    fn id(&self) -> String {
-        format!(
-            "{}_S{:02}E{:02}",
-            self.parsed.title, self.parsed.season, self.parsed.episode
-        )
-    }
-
-    pub fn relocate_dir(&self) -> Option<PathBuf> {
-        let mut relocate = Path::new(self.relocate.as_ref()?).to_owned();
-        if self.relocate_season {
-            relocate = relocate.join(format!("Season {}", self.parsed.season));
-        }
-        Some(relocate)
-    }
-}
-
-pub async fn wipe_nonexistant(db: &Db) {
-    for (key, value) in db.scan_prefix("torrent-").map(|x| x.unwrap()) {
-        let key = std::str::from_utf8(&key[..]).unwrap();
-        let value = std::str::from_utf8(&value[..]).unwrap();
-        let pull_entry: PullEntry =
-            serde_json::from_str(value).expect("failed to parse pull entry");
+pub fn wipe_nonexistant(db: &Database) -> Result<()> {
+    for pull_entry in db.list_pull_entry()? {
         if !matches!(pull_entry.state, PullState::Finished) {
             continue;
         }
@@ -113,21 +57,26 @@ pub async fn wipe_nonexistant(db: &Db) {
             continue;
         };
         if !relocate.exists() {
-            info!("{} doesn't exist, deleting {}", relocate.display(), key);
-            db.remove(key).unwrap();
+            info!(
+                "{} doesn't exist, deleting {}",
+                relocate.display(),
+                pull_entry.key()
+            );
+            pull_entry.delete(db)?;
         }
     }
+    Ok(())
 }
 
 pub struct Searcher<I: Source, O: Sink> {
     source: I,
     sink: O,
-    db: Db,
+    db: Database,
     config: SearchConfig,
 }
 
 impl<I: Source, O: Sink> Searcher<I, O> {
-    pub fn new(db: Db, source: I, sink: O, config: SearchConfig) -> Result<Self> {
+    pub fn new(db: Database, source: I, sink: O, config: SearchConfig) -> Result<Self> {
         Ok(Self {
             source,
             sink,
@@ -164,18 +113,8 @@ impl<I: Source, O: Sink> Searcher<I, O> {
 
         let finished = self.sink.finished().await?;
         for torrent in finished {
-            let downloading_id = format!("downloading-{}", torrent.id);
-            let internal_id = match self.db.get(&downloading_id)? {
-                None => continue,
-                Some(x) => String::from_utf8_lossy(&x[..]).into_owned(),
-            };
-            let dbid = format!("torrent-{}", internal_id);
-            let mut pull_entry: PullEntry = match self.db.get(&dbid)? {
-                None => {
-                    error!("missing torrent for id {}", internal_id);
-                    continue;
-                }
-                Some(x) => serde_json::from_str(&*String::from_utf8_lossy(&x[..]))?,
+            let Some(mut pull_entry) = self.db.get_pull_entry_from_torrent_id(torrent.id)? else {
+                continue;
             };
             info!("torrent = {:?}, pe = {:?}", torrent, pull_entry);
             if let Some(relocate) = pull_entry.result.relocate_dir() {
@@ -197,55 +136,30 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 }
             }
             pull_entry.state = PullState::Finished;
-            self.db
-                .insert(&dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;
-            self.db.remove(&downloading_id)?;
+            pull_entry.clear_torrent_id(&self.db)?;
             self.sink.delete(torrent.id).await?;
         }
         Ok(())
     }
 
     pub async fn clean(&mut self) -> Result<()> {
-        for torrent in self.db.scan_prefix("downloading-") {
-            let (key, value) = torrent?;
-            let key = std::str::from_utf8(&key[..])?;
-            let internal_id = std::str::from_utf8(&value[..])?;
-            let torrent_id: i64 = key.strip_prefix("downloading-").unwrap().parse()?;
-
-            let pull_entry: PullEntry = match self.db.get(format!("torrent-{}", internal_id))? {
-                None => {
-                    error!("missing torrent for id {}", internal_id);
-                    self.db.remove(key)?;
-                    continue;
-                }
-                Some(x) => serde_json::from_str(&*String::from_utf8_lossy(&x[..]))?,
-            };
-
-            if matches!(pull_entry.state, PullState::Finished) {
-                info!(
-                    "removing stale download tag for finished torrent: {}",
-                    internal_id
-                );
-                // remove stale download key that we scanned
-                self.db.remove(key)?;
+        for pull_entry in self.db.list_pull_entry_downloading()? {
+            let Some(torrent_id) = pull_entry.torrent_id else {
+                warn!("torrent_id missing in downloading-indexed pull_entry: {}", pull_entry.key());
                 continue;
-            }
+            };
 
             match self.sink.check(torrent_id).await? {
                 Some(info) => {
-                    if let Some(torrent_hash) = &pull_entry.torrent_hash {
-                        if torrent_hash != &info.hash {
-                            info!("removing id-stale torrent: {}", internal_id);
-                            self.db.remove(key)?;
-                            self.db.remove(format!("torrent-{}", internal_id))?;
-                        }
+                    if pull_entry.torrent_hash != info.hash {
+                        info!("removing id-stale torrent: {}", pull_entry.key());
+                        pull_entry.delete(&self.db)?;
                     }
                     // otherwise inprogress or finished, and not `clean`s concern
                 }
                 None => {
-                    info!("removing stale torrent: {}", internal_id);
-                    self.db.remove(key)?;
-                    self.db.remove(format!("torrent-{}", internal_id))?;
+                    info!("removing stale torrent: {}", pull_entry.key());
+                    pull_entry.delete(&self.db)?;
                 }
             }
         }
@@ -318,7 +232,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
             "TITLE", "DATE", "SEEDERS", "LEECHERS", "DOWNLOADS", "SIZE (MB)", "VIEW"
         );
         for candidate in candidates {
-            let id = candidate.id();
+            let id = candidate.key();
             debug!(
                 "{:<115} {:<5} {:>7} {:>7} {:>9} {: >9.02} {:<15}",
                 candidate.result.title,
@@ -329,15 +243,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 (candidate.result.size as f64) / 1024.0 / 1024.0,
                 candidate.result.view_link
             );
-            let dbid = format!("torrent-{}", id);
-            if self.db.contains_key(&dbid)? {
-                continue;
-            }
-            // TODO: legacy (remove)
-            if self
-                .db
-                .contains_key(&format!("torrent-{}_{}", candidate.profile, id))?
-            {
+            if self.db.exists_pull_entry(&id)? {
                 continue;
             }
             info!(
@@ -359,14 +265,11 @@ impl<I: Source, O: Sink> Searcher<I, O> {
             let pull_entry = PullEntry {
                 result: candidate,
                 torrent_id: Some(torrent_info.id),
-                torrent_hash: Some(torrent_info.hash),
+                torrent_hash: torrent_info.hash,
                 state: PullState::Downloading,
             };
-            self.db
-                .insert(dbid, serde_json::to_string(&pull_entry)?.as_bytes())?;
-            self.db
-                .insert(format!("downloading-{}", torrent_info.id), id.as_bytes())?;
-            self.db.flush_async().await?;
+            pull_entry.save(&self.db)?;
+            self.db.flush().await?;
         }
         Ok(())
     }

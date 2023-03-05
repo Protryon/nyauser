@@ -5,10 +5,12 @@ use search::Searcher;
 use sink::{Sink, TransmissionClient};
 use source::{NyaaClient, Source};
 
-use crate::{sink::SinkConfig, source::SourceConfig};
+use crate::{db::Database, sink::SinkConfig, source::SourceConfig};
 
 mod config;
+mod db;
 mod profile;
+mod regex_wrapper;
 mod search;
 mod series;
 mod sink;
@@ -66,8 +68,9 @@ async fn main() {
         }
         return;
     }
+    let db = Database::new(db);
     if args.wipe_nonexistant {
-        search::wipe_nonexistant(&db).await;
+        search::wipe_nonexistant(&db).expect("wipe_nonexistant failed");
         return;
     }
 
