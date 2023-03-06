@@ -5,7 +5,7 @@ use anyhow::Result;
 use chrono::{DateTime, FixedOffset};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SearchResult {
     pub title: String,
     pub torrent_link: String,

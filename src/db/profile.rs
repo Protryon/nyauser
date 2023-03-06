@@ -1,12 +1,14 @@
-use std::collections::HashMap;
-
 use regex::Match;
 use serde::{Deserialize, Serialize};
 
 use crate::regex_wrapper::RegexWrapper;
+use anyhow::Result;
+
+use super::{Database, StandardEpisode};
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct ProfileConfig {
+pub struct Profile {
+    pub name: String,
     pub source: String,
     /// initial parts of search phrase, of which is followed by space and series name
     pub search_prefix: Option<String>,
@@ -16,16 +18,15 @@ pub struct ProfileConfig {
     pub relocate: Option<String>,
 }
 
-#[derive(Default, Debug, Serialize, Deserialize)]
-pub struct StandardEpisode {
-    pub title: String,
-    pub season: u32,
-    pub episode: u32,
-    pub checksum: u32,
-    pub ext: HashMap<String, String>,
-}
+impl Profile {
+    pub fn save(&self, db: &Database) -> Result<()> {
+        db.db.insert(
+            format!("profile-{}", self.name),
+            serde_json::to_string(self)?.as_bytes(),
+        )?;
+        Ok(())
+    }
 
-impl ProfileConfig {
     pub fn parse_name<'s, 't>(&'s self, name: &'t str) -> Option<StandardEpisode> {
         let mut out = StandardEpisode::default();
         out.season = 1;
@@ -48,5 +49,20 @@ impl ProfileConfig {
             }
         }
         Some(out)
+    }
+}
+
+impl Database {
+    pub fn delete_profile(&self, name: &str) -> Result<()> {
+        self.db.remove(&format!("profile-{name}"))?;
+        Ok(())
+    }
+
+    pub fn get_profile(&self, name: &str) -> Result<Option<Profile>> {
+        self.get_serde("profile", name)
+    }
+
+    pub fn list_profile(&self) -> Result<Vec<Profile>> {
+        self.list_serde("profile-")
     }
 }

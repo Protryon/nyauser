@@ -29,3 +29,14 @@ regex = "1.7"
 hex = "0.4"
 clap = { version = "3.1", features = ["derive"] }
 indexmap = { version = "1.9", features = ["serde"] }
+axum = "0.6"
+axum-auth = "0.4.0"
+hyper = "0.14"
+futures = "0.3"
+http = "0.2"
+http-body = "0.4"
+tower-service = "0.3"
+tower-layer = "0.3"
+prometheus = { version = "0.13.3", features = ["process"] }
+prometheus_exporter = "0.8"
+pin-project = "1.0"

@@ -1,4 +1,4 @@
-use std::{path::Path, time::Duration};
+use std::{path::Path, sync::Arc, time::Duration};
 
 use anyhow::Result;
 use chrono::Utc;
@@ -8,8 +8,6 @@ use tokio::select;
 
 use crate::{
     db::{Database, ParsedSearchResult, PullEntry, PullState},
-    profile::ProfileConfig,
-    series::SeriesConfig,
     sink::Sink,
     source::Source,
 };
@@ -37,10 +35,6 @@ pub struct SearchConfig {
     /// name of sink to fetch with, defaulting to `default`
     #[serde(default = "default_source_sink")]
     pub sink: String,
-    #[serde(default)]
-    pub profiles: IndexMap<String, ProfileConfig>,
-    #[serde(default)]
-    pub series: IndexMap<String, SeriesConfig>,
     // path prefix patches
     #[serde(default)]
     pub path_patch: IndexMap<String, String>,
@@ -71,12 +65,12 @@ pub fn wipe_nonexistant(db: &Database) -> Result<()> {
 pub struct Searcher<I: Source, O: Sink> {
     source: I,
     sink: O,
-    db: Database,
+    db: Arc<Database>,
     config: SearchConfig,
 }
 
 impl<I: Source, O: Sink> Searcher<I, O> {
-    pub fn new(db: Database, source: I, sink: O, config: SearchConfig) -> Result<Self> {
+    pub fn new(db: Arc<Database>, source: I, sink: O, config: SearchConfig) -> Result<Self> {
         Ok(Self {
             source,
             sink,
@@ -171,11 +165,11 @@ impl<I: Source, O: Sink> Searcher<I, O> {
         self.clean().await?;
 
         let mut candidates = vec![];
-        for (series_name, series) in self.config.series.iter() {
-            let profile = match self.config.profiles.get(&series.profile) {
+        for series in self.db.list_series()? {
+            let profile = match self.db.get_profile(&series.profile)? {
                 Some(x) => x,
                 None => {
-                    error!("missing/invalid profile for '{}'", series_name);
+                    error!("missing/invalid profile for '{}'", series.name);
                     continue;
                 }
             };
@@ -185,8 +179,8 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 .unwrap_or(self.config.max_days_old);
 
             let search = match profile.search_prefix.as_ref() {
-                Some(prefix) => format!("{} {}", prefix, series_name),
-                None => series_name.to_string(),
+                Some(prefix) => format!("{} {}", prefix, series.name),
+                None => series.name.clone(),
             };
             match self.source.search(&*search).await {
                 Ok(items) => {
@@ -211,7 +205,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                             relocate: series.relocate.clone().or_else(|| {
                                 Some(
                                     Path::new(profile.relocate.as_ref()?)
-                                        .join(series_name)
+                                        .join(&series.name)
                                         .to_string_lossy()
                                         .into_owned(),
                                 )

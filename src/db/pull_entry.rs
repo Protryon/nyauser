@@ -1,11 +1,23 @@
-use std::path::{Path, PathBuf};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{profile::StandardEpisode, source::SearchResult};
+use crate::source::SearchResult;
 
 use super::Database;
 use anyhow::Result;
+
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+pub struct StandardEpisode {
+    pub title: String,
+    pub season: u32,
+    pub episode: u32,
+    pub checksum: u32,
+    pub ext: HashMap<String, String>,
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PullEntry {
@@ -51,13 +63,13 @@ impl PullEntry {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Serialize, Deserialize)]
 pub enum PullState {
     Downloading,
     Finished,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ParsedSearchResult {
     pub result: SearchResult,
     pub parsed: StandardEpisode,
@@ -89,11 +101,7 @@ impl Database {
     }
 
     pub fn get_pull_entry(&self, key: &str) -> Result<Option<PullEntry>> {
-        let Some(raw) = self.db.get(format!("torrent-{key}"))? else {
-            return Ok(None);
-        };
-        let utf = String::from_utf8(raw.to_vec())?;
-        Ok(Some(serde_json::from_str(&utf)?))
+        self.get_serde("torrent", key)
     }
 
     pub fn get_pull_entry_from_torrent_id(&self, id: i64) -> Result<Option<PullEntry>> {
@@ -105,15 +113,12 @@ impl Database {
         self.get_pull_entry(&internal_id)
     }
 
+    pub fn list_pull_entry_series(&self, name: &str) -> Result<Vec<PullEntry>> {
+        self.list_serde(&format!("torrent-{name}_S"))
+    }
+
     pub fn list_pull_entry(&self) -> Result<Vec<PullEntry>> {
-        let mut out = vec![];
-        for entry in self.db.scan_prefix("torrent-") {
-            let (_, value) = entry?;
-            let value = std::str::from_utf8(&value[..])?;
-            let pull_entry: PullEntry = serde_json::from_str(value)?;
-            out.push(pull_entry);
-        }
-        Ok(out)
+        self.list_serde("torrent-")
     }
 
     pub fn list_pull_entry_downloading(&self) -> Result<Vec<PullEntry>> {

@@ -1,3 +1,5 @@
+use std::net::SocketAddr;
+
 use indexmap::IndexMap;
 use serde::Deserialize;
 
@@ -5,6 +7,9 @@ use crate::{search::SearchConfig, sink::SinkConfig, source::SourceConfig};
 
 #[derive(Deserialize)]
 pub struct Config {
+    pub bind: SocketAddr,
+    pub rpc_username: String,
+    pub rpc_password: String,
     pub sinks: IndexMap<String, SinkConfig>,
     pub sources: IndexMap<String, SourceConfig>,
     pub search: SearchConfig,

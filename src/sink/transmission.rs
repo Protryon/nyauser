@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use transmission_rpc::{
-    types::{BasicAuth, RpcResponse, TorrentAddArgs, TorrentAdded, TorrentGetField},
+    types::{BasicAuth, RpcResponse, TorrentAddArgs, TorrentAddedOrDuplicate, TorrentGetField},
     *,
 };
 
@@ -35,19 +35,21 @@ impl TransmissionClient {
 }
 
 impl TorrentInfo {
-    fn from(torrent: &RpcResponse<TorrentAdded>) -> Option<Self> {
-        let torrent = torrent.arguments.torrent_added.as_ref()?;
-        Some(Self {
-            id: torrent.id?,
-            hash: torrent.hash_string.clone()?,
-            status: TorrentStatus::InProgress,
-        })
+    fn from(torrent: &RpcResponse<TorrentAddedOrDuplicate>) -> Option<Self> {
+        match &torrent.arguments {
+            TorrentAddedOrDuplicate::TorrentAdded(torrent) => Some(Self {
+                id: torrent.id?,
+                hash: torrent.hash_string.clone()?,
+                status: TorrentStatus::InProgress,
+            }),
+            TorrentAddedOrDuplicate::TorrentDuplicate(_) => None,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl Sink for TransmissionClient {
-    async fn push(&self, torrent_url: &str) -> Result<Option<TorrentInfo>> {
+    async fn push(&mut self, torrent_url: &str) -> Result<Option<TorrentInfo>> {
         let pushed = self
             .client
             .torrent_add(TorrentAddArgs {
@@ -65,14 +67,14 @@ impl Sink for TransmissionClient {
         Err(anyhow!("failed to get torrent id: {:?}", pushed))
     }
 
-    async fn check(&self, id: i64) -> Result<Option<TorrentInfo>> {
+    async fn check(&mut self, id: i64) -> Result<Option<TorrentInfo>> {
         let torrent = self
             .client
             .torrent_get(
                 Some(vec![
                     TorrentGetField::Id,
-                    TorrentGetField::Isfinished,
-                    TorrentGetField::Percentdone,
+                    TorrentGetField::IsFinished,
+                    TorrentGetField::PercentDone,
                     TorrentGetField::HashString,
                 ]),
                 Some(vec![types::Id::Id(id)]),
@@ -95,15 +97,15 @@ impl Sink for TransmissionClient {
         })
     }
 
-    async fn finished(&self) -> Result<Vec<FinishedTorrent>> {
+    async fn finished(&mut self) -> Result<Vec<FinishedTorrent>> {
         let torrents = self
             .client
             .torrent_get(
                 Some(vec![
                     TorrentGetField::Id,
-                    TorrentGetField::Isfinished,
-                    TorrentGetField::Percentdone,
-                    TorrentGetField::Downloaddir,
+                    TorrentGetField::IsFinished,
+                    TorrentGetField::PercentDone,
+                    TorrentGetField::DownloadDir,
                     TorrentGetField::Files,
                 ]),
                 None,
@@ -126,7 +128,7 @@ impl Sink for TransmissionClient {
             .collect())
     }
 
-    async fn delete(&self, id: i64) -> Result<()> {
+    async fn delete(&mut self, id: i64) -> Result<()> {
         self.client
             .torrent_remove(vec![types::Id::Id(id)], true)
             .await

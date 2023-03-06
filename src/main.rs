@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use config::CONFIG;
 use log::LevelFilter;
@@ -5,14 +7,13 @@ use search::Searcher;
 use sink::{Sink, TransmissionClient};
 use source::{NyaaClient, Source};
 
-use crate::{db::Database, sink::SinkConfig, source::SourceConfig};
+use crate::{api::AppState, db::Database, sink::SinkConfig, source::SourceConfig};
 
+mod api;
 mod config;
 mod db;
-mod profile;
 mod regex_wrapper;
 mod search;
-mod series;
 mod sink;
 mod source;
 
@@ -68,7 +69,7 @@ async fn main() {
         }
         return;
     }
-    let db = Database::new(db);
+    let db = Arc::new(Database::new(db));
     if args.wipe_nonexistant {
         search::wipe_nonexistant(&db).expect("wipe_nonexistant failed");
         return;
@@ -89,12 +90,14 @@ async fn main() {
     let source: Box<dyn Source + Send + Sync> = match source_config {
         SourceConfig::Nyaa(config) => Box::new(NyaaClient::new(config.clone())),
     };
-    let mut searcher =
-        Searcher::new(db, source, sink, CONFIG.search.clone()).expect("failed to init searcher");
+    let mut searcher = Searcher::new(db.clone(), source, sink, CONFIG.search.clone())
+        .expect("failed to init searcher");
     if args.clean {
         searcher.clean().await.expect("clean failed");
         return;
     }
+
+    api::spawn_api_server(AppState { database: db });
 
     info!("running searcher");
     searcher.run().await;

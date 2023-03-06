@@ -25,31 +25,31 @@ pub struct TorrentInfo {
 #[async_trait::async_trait]
 pub trait Sink: Send + Sync {
     /// Ok(None) -> already present
-    async fn push(&self, torrent_url: &str) -> Result<Option<TorrentInfo>>;
+    async fn push(&mut self, torrent_url: &str) -> Result<Option<TorrentInfo>>;
 
-    async fn check(&self, id: i64) -> Result<Option<TorrentInfo>>;
+    async fn check(&mut self, id: i64) -> Result<Option<TorrentInfo>>;
 
-    async fn finished(&self) -> Result<Vec<FinishedTorrent>>;
+    async fn finished(&mut self) -> Result<Vec<FinishedTorrent>>;
 
-    async fn delete(&self, id: i64) -> Result<()>;
+    async fn delete(&mut self, id: i64) -> Result<()>;
 }
 
 #[async_trait::async_trait]
 impl Sink for Box<dyn Sink + Send + Sync> {
-    async fn push(&self, torrent_url: &str) -> Result<Option<TorrentInfo>> {
-        Sink::push(&**self, torrent_url).await
+    async fn push(&mut self, torrent_url: &str) -> Result<Option<TorrentInfo>> {
+        Sink::push(&mut **self, torrent_url).await
     }
 
-    async fn check(&self, id: i64) -> Result<Option<TorrentInfo>> {
-        Sink::check(&**self, id).await
+    async fn check(&mut self, id: i64) -> Result<Option<TorrentInfo>> {
+        Sink::check(&mut **self, id).await
     }
 
-    async fn finished(&self) -> Result<Vec<FinishedTorrent>> {
-        Sink::finished(&**self).await
+    async fn finished(&mut self) -> Result<Vec<FinishedTorrent>> {
+        Sink::finished(&mut **self).await
     }
 
-    async fn delete(&self, id: i64) -> Result<()> {
-        Sink::delete(&**self, id).await
+    async fn delete(&mut self, id: i64) -> Result<()> {
+        Sink::delete(&mut **self, id).await
     }
 }
 
