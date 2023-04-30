@@ -96,6 +96,12 @@ async fn main() {
         searcher.clean().await.expect("clean failed");
         return;
     }
+    for profile in &CONFIG.profiles {
+        profile.save(&db).expect("Failed to load profile");
+    }
+    for series in &CONFIG.series {
+        series.save(&db).expect("Failed to load series");
+    }
 
     api::spawn_api_server(AppState { database: db });
 

@@ -14,7 +14,7 @@ use anyhow::Result;
 pub struct StandardEpisode {
     pub title: String,
     pub season: u32,
-    pub episode: u32,
+    pub episode: String,
     pub checksum: u32,
     pub ext: HashMap<String, String>,
 }
