@@ -3,7 +3,12 @@ use std::net::SocketAddr;
 use indexmap::IndexMap;
 use serde::Deserialize;
 
-use crate::{search::SearchConfig, sink::SinkConfig, source::SourceConfig};
+use crate::{
+    db::{Profile, Series},
+    search::SearchConfig,
+    sink::SinkConfig,
+    source::SourceConfig,
+};
 
 #[derive(Deserialize)]
 pub struct Config {
@@ -14,6 +19,8 @@ pub struct Config {
     pub sources: IndexMap<String, SourceConfig>,
     pub search: SearchConfig,
     pub db_file: String,
+    pub profiles: Vec<Profile>,
+    pub series: Vec<Series>,
 }
 
 lazy_static::lazy_static! {

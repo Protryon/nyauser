@@ -38,6 +38,7 @@ pub struct SearchConfig {
     // path prefix patches
     #[serde(default)]
     pub path_patch: IndexMap<String, String>,
+    pub relocate: Option<String>,
 }
 
 pub fn wipe_nonexistant(db: &Database) -> Result<()> {
@@ -166,6 +167,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
 
         let mut candidates = vec![];
         for series in self.db.list_series()? {
+            info!("Searching for {}", series.name);
             let profile = match self.db.get_profile(&series.profile)? {
                 Some(x) => x,
                 None => {
@@ -198,18 +200,20 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                                 continue;
                             }
                         };
+                        // Order for relocate:
+                        // series > profile > search
+                        let relocate = if series.relocate.is_some() {
+                            series.relocate.clone()
+                        } else if profile.relocate.is_some() {
+                            profile.relocate.clone()
+                        } else {
+                            self.config.relocate.clone()
+                        };
                         candidates.push(ParsedSearchResult {
                             result: item,
                             parsed,
                             profile: series.profile.to_string(),
-                            relocate: series.relocate.clone().or_else(|| {
-                                Some(
-                                    Path::new(profile.relocate.as_ref()?)
-                                        .join(&series.name)
-                                        .to_string_lossy()
-                                        .into_owned(),
-                                )
-                            }),
+                            relocate,
                             relocate_season: series.relocate_season,
                         })
                     }

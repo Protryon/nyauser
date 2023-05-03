@@ -9,7 +9,6 @@ use super::{Database, StandardEpisode};
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Profile {
     pub name: String,
-    pub source: String,
     /// initial parts of search phrase, of which is followed by space and series name
     pub search_prefix: Option<String>,
     /// torrent name parsing regex

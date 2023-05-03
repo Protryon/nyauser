@@ -1,6 +1,8 @@
 /target
 /deploy.sh
 /config.sh
-/config.yml
 /tail.sh
 /compose/data/*
+
+/nyauser.db/
+/media/

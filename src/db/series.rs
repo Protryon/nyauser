@@ -5,6 +5,10 @@ use serde::{Deserialize, Serialize};
 use super::{Database, ParsedSearchResult, PullState};
 use anyhow::Result;
 
+fn default_relocate_season() -> bool {
+    true
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Series {
     pub name: String,
@@ -15,6 +19,7 @@ pub struct Series {
     /// if set, overrides `Profile::relocate`/<series-name> default path
     pub relocate: Option<String>,
     /// if true, `Season X` is appended to the relocate path
+    #[serde(default = "default_relocate_season")]
     pub relocate_season: bool,
 }
 
@@ -36,7 +41,7 @@ impl Series {
                 .or_default()
                 .episodes
                 .insert(
-                    pull.result.parsed.episode,
+                    pull.result.parsed.episode.clone(),
                     EpisodeStatus {
                         state: pull.state,
                         source: pull.result,
@@ -74,7 +79,7 @@ pub struct SeriesStatus {
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct SeasonStatus {
-    pub episodes: BTreeMap<u32, EpisodeStatus>,
+    pub episodes: BTreeMap<String, EpisodeStatus>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
