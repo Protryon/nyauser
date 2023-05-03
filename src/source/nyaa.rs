@@ -33,8 +33,10 @@ pub struct NyaaResult {
     leechers: u64,
     downloads: u64,
     /// Anime - English-translated
+    #[allow(dead_code)]
     category: String,
     size: u64,
+    #[allow(dead_code)]
     trusted: bool,
 }
 

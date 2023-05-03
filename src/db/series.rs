@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Database, ParsedSearchResult, PullState};
+use super::{Database, Episode, ParsedSearchResult, PullState};
 use anyhow::Result;
 
 fn default_relocate_season() -> bool {
@@ -79,7 +79,7 @@ pub struct SeriesStatus {
 
 #[derive(Default, Serialize, Deserialize, Clone)]
 pub struct SeasonStatus {
-    pub episodes: BTreeMap<String, EpisodeStatus>,
+    pub episodes: BTreeMap<Episode, EpisodeStatus>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

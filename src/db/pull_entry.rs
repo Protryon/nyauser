@@ -1,6 +1,9 @@
 use std::{
+    cmp::Ordering,
     collections::HashMap,
+    fmt,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use serde::{Deserialize, Serialize};
@@ -10,11 +13,62 @@ use crate::source::SearchResult;
 use super::Database;
 use anyhow::Result;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(untagged)]
+pub enum Episode {
+    Standard(u32),
+    Special(String),
+}
+
+impl PartialOrd for Episode {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        match (self, other) {
+            (Episode::Standard(e1), Episode::Standard(e2)) => e1.partial_cmp(e2),
+            (Episode::Standard(_), Episode::Special(_)) => Some(Ordering::Less),
+            (Episode::Special(_), Episode::Standard(_)) => Some(Ordering::Greater),
+            (Episode::Special(e1), Episode::Special(e2)) => e1.partial_cmp(e2),
+        }
+    }
+}
+
+impl Ord for Episode {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+impl FromStr for Episode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Some(s) = s.parse().ok() {
+            Ok(Episode::Standard(s))
+        } else {
+            Ok(Episode::Special(s.to_string()))
+        }
+    }
+}
+
+impl Default for Episode {
+    fn default() -> Self {
+        Episode::Standard(0)
+    }
+}
+
+impl fmt::Display for Episode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Episode::Standard(x) => write!(f, "{}", x),
+            Episode::Special(x) => write!(f, "{}", x),
+        }
+    }
+}
+
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub struct StandardEpisode {
     pub title: String,
     pub season: u32,
-    pub episode: String,
+    pub episode: Episode,
     pub checksum: u32,
     pub ext: HashMap<String, String>,
 }
@@ -132,5 +186,17 @@ impl Database {
             out.push(pull_entry);
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_episode_order() {
+        assert!(Episode::Standard(5) < Episode::Standard(10));
+        assert!(Episode::Standard(15) < Episode::Special("test".to_string()));
+        assert!(Episode::Special("2".to_string()) < Episode::Special("20".to_string()));
     }
 }
