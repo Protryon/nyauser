@@ -1,10 +1,8 @@
 use axum::extract::{Path, State};
 
-use crate::db::SeriesStatus;
-
 use super::*;
 
-pub(super) async fn get(
+pub(super) async fn get_status(
     _: Auth,
     Path(name): Path<String>,
     State(state): State<AppState>,
@@ -13,6 +11,6 @@ pub(super) async fn get(
         return Err(ApiError::NotFound);
     };
     Ok(Json(
-        series.status(&state.database).map_err(ApiError::Other)?,
+        state.database.series_status(series).map_err(ApiError::Other)?,
     ))
 }

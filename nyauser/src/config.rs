@@ -1,10 +1,10 @@
 use std::net::SocketAddr;
 
 use indexmap::IndexMap;
+use nyauser_types::{Profile, Series};
 use serde::Deserialize;
 
 use crate::{
-    db::{Profile, Series},
     search::SearchConfig,
     sink::SinkConfig,
     source::SourceConfig,

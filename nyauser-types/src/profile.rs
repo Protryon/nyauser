@@ -2,9 +2,8 @@ use regex::Match;
 use serde::{Deserialize, Serialize};
 
 use crate::regex_wrapper::RegexWrapper;
-use anyhow::Result;
 
-use super::{Database, StandardEpisode};
+use super::StandardEpisode;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Profile {
@@ -18,14 +17,6 @@ pub struct Profile {
 }
 
 impl Profile {
-    pub fn save(&self, db: &Database) -> Result<()> {
-        db.db.insert(
-            format!("profile-{}", self.name),
-            serde_json::to_string(self)?.as_bytes(),
-        )?;
-        Ok(())
-    }
-
     pub fn parse_name<'s, 't>(&'s self, name: &'t str) -> Option<StandardEpisode> {
         let mut out = StandardEpisode::default();
         out.season = 1;
@@ -48,20 +39,5 @@ impl Profile {
             }
         }
         Some(out)
-    }
-}
-
-impl Database {
-    pub fn delete_profile(&self, name: &str) -> Result<()> {
-        self.db.remove(&format!("profile-{name}"))?;
-        Ok(())
-    }
-
-    pub fn get_profile(&self, name: &str) -> Result<Option<Profile>> {
-        self.get_serde("profile", name)
-    }
-
-    pub fn list_profile(&self) -> Result<Vec<Profile>> {
-        self.list_serde("profile-")
     }
 }

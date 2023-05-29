@@ -1,7 +1,7 @@
 ---
 # API and data storage info
-rpc_username: rpc
-rpc_password: rpc
+rpc_username: nyauser
+rpc_password: nyauser
 bind: 127.0.0.1:8000
 db_file: ./nyauser.db
 

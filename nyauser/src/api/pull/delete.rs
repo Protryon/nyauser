@@ -7,12 +7,11 @@ pub(super) async fn delete(
     Path(key): Path<String>,
     State(state): State<AppState>,
 ) -> ApiResult<()> {
-    state
+    let pull = state
         .database
         .get_pull_entry(&key)
         .map_err(ApiError::Other)?
-        .ok_or(ApiError::NotFound)?
-        .delete(&state.database)
-        .map_err(ApiError::Other)?;
+        .ok_or(ApiError::NotFound)?;
+    state.database.delete_pull(pull).map_err(ApiError::Other)?;
     Ok(())
 }

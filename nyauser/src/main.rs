@@ -12,7 +12,6 @@ use crate::{api::AppState, db::Database, sink::SinkConfig, source::SourceConfig}
 mod api;
 mod config;
 mod db;
-mod regex_wrapper;
 mod search;
 mod sink;
 mod source;
@@ -97,10 +96,10 @@ async fn main() {
         return;
     }
     for profile in &CONFIG.profiles {
-        profile.save(&db).expect("Failed to load profile");
+        db.save_profile(profile).expect("Failed to load profile");
     }
     for series in &CONFIG.series {
-        series.save(&db).expect("Failed to load series");
+        db.save_series(series).expect("Failed to load series");
     }
 
     api::spawn_api_server(AppState { database: db });

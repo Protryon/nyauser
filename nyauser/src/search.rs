@@ -3,11 +3,12 @@ use std::{path::Path, sync::Arc, time::Duration};
 use anyhow::Result;
 use chrono::Utc;
 use indexmap::IndexMap;
+use nyauser_types::{PullState, ParsedSearchResult, PullEntry};
 use serde::Deserialize;
 use tokio::select;
 
 use crate::{
-    db::{Database, ParsedSearchResult, PullEntry, PullState},
+    db::Database,
     sink::Sink,
     source::Source,
 };
@@ -57,7 +58,7 @@ pub fn wipe_nonexistant(db: &Database) -> Result<()> {
                 relocate.display(),
                 pull_entry.key()
             );
-            pull_entry.delete(db)?;
+            db.delete_pull(pull_entry)?;
         }
     }
     Ok(())
@@ -131,7 +132,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 }
             }
             pull_entry.state = PullState::Finished;
-            pull_entry.clear_torrent_id(&self.db)?;
+            self.db.clear_torrent_id(&mut pull_entry)?;
             self.sink.delete(torrent.id).await?;
         }
         Ok(())
@@ -148,13 +149,13 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 Some(info) => {
                     if pull_entry.torrent_hash != info.hash {
                         info!("removing id-stale torrent: {}", pull_entry.key());
-                        pull_entry.delete(&self.db)?;
+                        self.db.delete_pull(pull_entry)?;
                     }
                     // otherwise inprogress or finished, and not `clean`s concern
                 }
                 None => {
                     info!("removing stale torrent: {}", pull_entry.key());
-                    pull_entry.delete(&self.db)?;
+                    self.db.delete_pull(pull_entry)?;
                 }
             }
         }
@@ -266,7 +267,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 torrent_hash: torrent_info.hash,
                 state: PullState::Downloading,
             };
-            pull_entry.save(&self.db)?;
+            self.db.save_pull(&pull_entry)?;
             self.db.flush().await?;
         }
         Ok(())

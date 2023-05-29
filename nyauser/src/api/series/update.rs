@@ -1,14 +1,12 @@
 use axum::extract::{Path, State};
 
-use crate::db::Profile;
-
 use super::*;
 
 pub(super) async fn update(
     _: Auth,
     Path(name): Path<String>,
     State(state): State<AppState>,
-    Json(body): Json<Profile>,
+    Json(body): Json<Series>,
 ) -> ApiResult<()> {
     if body.name != name {
         return Err(ApiError::BadRequest(format!(
@@ -16,6 +14,6 @@ pub(super) async fn update(
             name, body.name
         )));
     }
-    body.save(&state.database).map_err(ApiError::Other)?;
+    state.database.save_series(&body).map_err(ApiError::Other)?;
     Ok(())
 }

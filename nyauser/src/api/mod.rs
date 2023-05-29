@@ -19,6 +19,7 @@ use crate::config::CONFIG;
 
 use self::logger::LoggerLayer;
 use anyhow::Result;
+use nyauser_types::*;
 
 mod auth;
 
