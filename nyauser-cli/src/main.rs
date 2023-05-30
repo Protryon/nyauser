@@ -159,7 +159,7 @@ fn api(method: Method, path: impl AsRef<str>) -> Result<RequestBuilder> {
     for segment in path.as_ref().split('/').filter(|x| !x.is_empty()) {
         url.path_segments_mut().unwrap().pop_if_empty().push(segment);
     }
-    Ok(CLIENT.request(method, API.join(path.as_ref())?)
+    Ok(CLIENT.request(method, url)
         .basic_auth(&*API_USER, Some(&*API_PASS)))
 }
 

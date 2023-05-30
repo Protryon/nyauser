@@ -16,14 +16,17 @@ RUN apt-get update && apt-get install cmake -y
 
 COPY --from=planner /plan/recipe.json recipe.json
 
+RUN if [ "$BUILD_MODE" = "release" ]; then cargo chef cook --release -p nyauser; fi
+RUN if [ "$BUILD_MODE" = "debug" ]; then cargo chef cook -p nyauser; fi
+
 COPY ./nyauser ./nyauser
 COPY ./nyauser-types ./nyauser-types
 COPY ./nyauser-cli ./nyauser-cli
 COPY ./Cargo.lock .
 COPY ./Cargo.toml .
 
-RUN if [ "$BUILD_MODE" = "release" ]; then cargo chef cook --release -p nyauser && mv /build/target/release/nyauser /build/target/nyauser; fi
-RUN if [ "$BUILD_MODE" = "debug" ]; then cargo chef cook -p nyauser && mv /build/target/debug/nyauser /build/target/nyauser; fi
+RUN if [ "$BUILD_MODE" = "release" ]; then cargo build --release  -p nyauser && mv /build/target/release/nyauser /build/target/nyauser; fi
+RUN if [ "$BUILD_MODE" = "debug" ]; then cargo build  -p nyauser && mv /build/target/debug/nyauser /build/target/nyauser; fi
 
 FROM debian:buster-slim
 WORKDIR /runtime

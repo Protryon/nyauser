@@ -1,6 +1,6 @@
 [package]
 name = "nyauser-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 authors = ["Protryon <max.bruce12@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -20,7 +20,7 @@ indexmap = { version = "1.9", features = ["serde"] }
 regex = "1.7"
 hex = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
-nyauser-types = { "path" = "../nyauser-types" }
+nyauser-types = { "path" = "../nyauser-types", version = "0.1.1" }
 reqwest = { version = "0.11", features = ["json"] }
 tokio = { version = "1", features = ["full"] }
 lazy_static = "1.4"

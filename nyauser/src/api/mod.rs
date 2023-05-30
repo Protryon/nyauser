@@ -107,7 +107,18 @@ fn route(state: AppState) -> Router {
         .route("/health", routing::get(health))
         .with_state(state);
 
-    Router::new().nest("/api/v1", api).layer(LoggerLayer)
+    let nest = if let Some(base_path) = &CONFIG.rpc_base_path {
+        let mut base = base_path.clone();
+        if !base.ends_with('/') {
+            base.push('/');
+        }
+        base.push_str("api/v1");
+        base
+    } else {
+        "/api/v1".to_string()
+    };
+
+    Router::new().nest(&nest, api).layer(LoggerLayer)
 }
 
 pub fn spawn_api_server(state: AppState) {

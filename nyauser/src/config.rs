@@ -15,11 +15,15 @@ pub struct Config {
     pub bind: SocketAddr,
     pub rpc_username: String,
     pub rpc_password: String,
+    #[serde(default)]
+    pub rpc_base_path: Option<String>,
     pub sinks: IndexMap<String, SinkConfig>,
     pub sources: IndexMap<String, SourceConfig>,
     pub search: SearchConfig,
     pub db_file: String,
+    #[serde(default)]
     pub profiles: Vec<Profile>,
+    #[serde(default)]
     pub series: Vec<Series>,
 }
 
