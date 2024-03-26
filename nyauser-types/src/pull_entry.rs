@@ -106,6 +106,8 @@ pub struct PullEntry {
     pub torrent_id: Option<i64>,
     pub torrent_hash: String,
     pub state: PullState,
+    #[serde(default)]
+    pub files: Vec<String>,
 }
 
 impl PullEntry {

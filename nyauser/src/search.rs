@@ -48,7 +48,15 @@ pub fn wipe_nonexistant(db: &Database) -> Result<()> {
         } else {
             continue;
         };
-        if !relocate.exists() {
+        let should_delete = if pull_entry.files.is_empty() {
+            !relocate.exists()
+        } else {
+            pull_entry
+                .files
+                .iter()
+                .all(|file| !relocate.join(file).exists())
+        };
+        if should_delete {
             info!(
                 "{} doesn't exist, deleting {}",
                 relocate.display(),
@@ -147,7 +155,10 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                         tokio::fs::create_dir_all(new_file.parent().unwrap()).await?;
                         tokio::fs::rename(old_file, new_file).await?;
                     }
+                    pull_entry.files.push(file);
                 }
+            } else {
+                pull_entry.files.extend(torrent.files);
             }
             pull_entry.state = PullState::Finished;
             self.db.clear_torrent_id(&mut pull_entry)?;
@@ -296,6 +307,7 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                 torrent_id: Some(torrent_info.id),
                 torrent_hash: torrent_info.hash,
                 state: PullState::Downloading,
+                files: vec![],
             };
             self.db.save_pull(&pull_entry)?;
             self.db.flush().await?;
