@@ -4,11 +4,7 @@ use indexmap::IndexMap;
 use nyauser_types::{Profile, Series};
 use serde::Deserialize;
 
-use crate::{
-    search::SearchConfig,
-    sink::SinkConfig,
-    source::SourceConfig,
-};
+use crate::{search::SearchConfig, sink::SinkConfig, source::SourceConfig};
 
 #[derive(Deserialize)]
 pub struct Config {

@@ -3,15 +3,11 @@ use std::{path::Path, sync::Arc, time::Duration};
 use anyhow::Result;
 use chrono::Utc;
 use indexmap::IndexMap;
-use nyauser_types::{PullState, ParsedSearchResult, PullEntry};
+use nyauser_types::{ParsedSearchResult, PullEntry, PullState};
 use serde::Deserialize;
-use tokio::select;
+use tokio::{select, sync::Notify};
 
-use crate::{
-    db::Database,
-    sink::Sink,
-    source::Source,
-};
+use crate::{db::Database, sink::Sink, source::Source};
 
 fn default_source_sink() -> String {
     "default".to_string()
@@ -69,6 +65,8 @@ pub struct Searcher<I: Source, O: Sink> {
     sink: O,
     db: Arc<Database>,
     config: SearchConfig,
+    search: Arc<Notify>,
+    scan: Arc<Notify>,
 }
 
 impl<I: Source, O: Sink> Searcher<I, O> {
@@ -78,7 +76,17 @@ impl<I: Source, O: Sink> Searcher<I, O> {
             sink,
             db,
             config,
+            search: Arc::new(Notify::new()),
+            scan: Arc::new(Notify::new()),
         })
+    }
+
+    pub fn search(&self) -> &Arc<Notify> {
+        &self.search
+    }
+
+    pub fn scan(&self) -> &Arc<Notify> {
+        &self.scan
     }
 
     pub async fn run(mut self) {
@@ -94,7 +102,17 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                         error!("failed to run scan: {:?}", e);
                     }
                 },
+                _ = self.scan.notified() => {
+                    if let Err(e) = self.scan_completed().await {
+                        error!("failed to run scan: {:?}", e);
+                    }
+                },
                 _ = search_interval.tick() => {
+                    if let Err(e) = self.run_iter().await {
+                        error!("failed to run search: {:?}", e);
+                    }
+                },
+                _ = self.search.notified() => {
                     if let Err(e) = self.run_iter().await {
                         error!("failed to run search: {:?}", e);
                     }
@@ -141,7 +159,10 @@ impl<I: Source, O: Sink> Searcher<I, O> {
     pub async fn clean(&mut self) -> Result<()> {
         for pull_entry in self.db.list_pull_entry_downloading()? {
             let Some(torrent_id) = pull_entry.torrent_id else {
-                warn!("torrent_id missing in downloading-indexed pull_entry: {}", pull_entry.key());
+                warn!(
+                    "torrent_id missing in downloading-indexed pull_entry: {}",
+                    pull_entry.key()
+                );
                 continue;
             };
 
@@ -205,10 +226,19 @@ impl<I: Source, O: Sink> Searcher<I, O> {
                         // series > profile > search
                         let relocate = if series.relocate.is_some() {
                             series.relocate.clone()
-                        } else if profile.relocate.is_some() {
-                            profile.relocate.clone()
                         } else {
-                            self.config.relocate.clone()
+                            let mut base = if profile.relocate.is_some() {
+                                profile.relocate.clone()
+                            } else {
+                                self.config.relocate.clone()
+                            };
+                            if let Some(base) = base.as_mut() {
+                                if !base.ends_with('/') {
+                                    base.push('/');
+                                }
+                                base.push_str(&series.name);
+                            }
+                            base
                         };
                         candidates.push(ParsedSearchResult {
                             result: item,

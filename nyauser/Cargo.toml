@@ -1,6 +1,6 @@
 [package]
 name = "nyauser"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 authors = ["Protryon <max.bruce12@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -41,4 +41,4 @@ tower-layer = "0.3"
 prometheus = { version = "0.13.3", features = ["process"] }
 prometheus_exporter = "0.8"
 pin-project = "1.0"
-nyauser-types = { "path" = "../nyauser-types", version = "0.1.1" }
+nyauser-types = { "path" = "../nyauser-types", version = "0.1.2" }

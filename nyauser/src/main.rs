@@ -102,7 +102,11 @@ async fn main() {
         db.save_series(series).expect("Failed to load series");
     }
 
-    api::spawn_api_server(AppState { database: db });
+    api::spawn_api_server(AppState {
+        database: db,
+        scan: searcher.scan().clone(),
+        search: searcher.search().clone(),
+    });
 
     info!("running searcher");
     searcher.run().await;

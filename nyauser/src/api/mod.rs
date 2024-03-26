@@ -10,6 +10,7 @@ use axum::{
     *,
 };
 use reqwest::Url;
+use tokio::sync::Notify;
 
 use crate::api::auth::Auth;
 use crate::db::Database;
@@ -24,6 +25,7 @@ use nyauser_types::*;
 mod auth;
 
 mod logger;
+mod proc;
 mod profile;
 mod pull;
 mod series;
@@ -95,6 +97,8 @@ pub type ApiResult<T> = Result<T, ApiError>;
 #[derive(Clone)]
 pub struct AppState {
     pub database: Arc<Database>,
+    pub scan: Arc<Notify>,
+    pub search: Arc<Notify>,
 }
 
 async fn health() {}
@@ -104,6 +108,7 @@ fn route(state: AppState) -> Router {
         .nest("/series", series::route())
         .nest("/profile", profile::route())
         .nest("/pull", pull::route())
+        .nest("/proc", proc::route())
         .route("/health", routing::get(health))
         .with_state(state);
 

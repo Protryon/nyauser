@@ -1,8 +1,8 @@
 use super::*;
 
 mod delete;
-mod get_status;
 mod get;
+mod get_status;
 mod list;
 mod update;
 

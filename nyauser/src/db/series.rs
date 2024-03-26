@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use nyauser_types::{Series, SeriesStatus, SeasonStatus, EpisodeStatus};
+use nyauser_types::{EpisodeStatus, SeasonStatus, Series, SeriesStatus};
 
 use super::Database;
 use anyhow::Result;
@@ -30,10 +30,7 @@ impl Database {
                     },
                 );
         }
-        Ok(SeriesStatus {
-            seasons,
-            series,
-        })
+        Ok(SeriesStatus { seasons, series })
     }
 
     pub fn delete_series(&self, name: &str) -> Result<()> {

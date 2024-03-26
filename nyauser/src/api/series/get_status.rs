@@ -11,6 +11,9 @@ pub(super) async fn get_status(
         return Err(ApiError::NotFound);
     };
     Ok(Json(
-        state.database.series_status(series).map_err(ApiError::Other)?,
+        state
+            .database
+            .series_status(series)
+            .map_err(ApiError::Other)?,
     ))
 }

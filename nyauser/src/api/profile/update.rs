@@ -14,6 +14,9 @@ pub(super) async fn update(
             name, body.name
         )));
     }
-    state.database.save_profile(&body).map_err(ApiError::Other)?;
+    state
+        .database
+        .save_profile(&body)
+        .map_err(ApiError::Other)?;
     Ok(())
 }
